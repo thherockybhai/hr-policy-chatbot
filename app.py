@@ -5,7 +5,8 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.chains import RetrievalQA
-from langchain_openai import ChatOpenAI
+from langchain_ibm import WatsonxLLM
+from ibm_watsonx_ai.metanames import GenTextParamsMetaNames as GenParams
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,7 +19,7 @@ st.set_page_config(
 )
 
 st.title("📋 HR Policy Chatbot")
-st.caption("Upload your HR policy PDF and ask questions in plain English.")
+st.caption("Powered by IBM watsonx.ai · Granite LLM · RAG")
 
 # ── Session state ─────────────────────────────────────────────────────
 if "qa_chain" not in st.session_state:
@@ -28,46 +29,54 @@ if "chat_history" not in st.session_state:
 if "doc_name" not in st.session_state:
     st.session_state.doc_name = None
 
-# ── Step 1: Upload PDF ────────────────────────────────────────────────
+# ── Watson LLM (lazy init) ────────────────────────────────────────────
+def get_llm():
+    return WatsonxLLM(
+        model_id="ibm/granite-13b-chat-v2",
+        url="https://us-south.ml.cloud.ibm.com",
+        project_id=os.environ.get("WATSONX_PROJECT_ID"),
+        apikey=os.environ.get("WATSONX_API_KEY"),
+        params={
+            GenParams.MAX_NEW_TOKENS: 512,
+            GenParams.TEMPERATURE: 0.1,
+            GenParams.REPETITION_PENALTY: 1.1,
+        }
+    )
+
+# ── Sidebar: Upload PDF ───────────────────────────────────────────────
 st.sidebar.header("📄 Upload Document")
 uploaded_file = st.sidebar.file_uploader("Choose an HR Policy PDF", type=["pdf"])
 
 if uploaded_file and uploaded_file.name != st.session_state.doc_name:
     with st.spinner("Reading and indexing your PDF..."):
 
-        # Step 2: Read PDF
+        # Step 1: Read PDF
         reader = PdfReader(uploaded_file)
         raw_text = ""
         for page in reader.pages:
             raw_text += page.extract_text() or ""
 
-        # Step 3: Chunk the document
+        # Step 2: Chunk
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=500,
             chunk_overlap=50,
         )
         chunks = splitter.split_text(raw_text)
 
-        # Step 4: Convert to embeddings (free, local)
+        # Step 3: Embed (free, local — no extra API key)
         embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
 
-        # Step 5: Store in FAISS vector DB
+        # Step 4: Store in FAISS
         vectorstore = FAISS.from_texts(chunks, embeddings)
 
-        # Step 6: Create retriever
+        # Step 5: Retriever
         retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
-        # Step 7: Build RAG chain
-        llm = ChatOpenAI(
-            model="gpt-3.5-turbo",
-            temperature=0.1,
-            openai_api_key=os.environ.get("OPENAI_API_KEY")
-        )
-
+        # Step 6: RAG chain with Watson LLM
         st.session_state.qa_chain = RetrievalQA.from_chain_type(
-            llm=llm,
+            llm=get_llm(),
             chain_type="stuff",
             retriever=retriever,
             return_source_documents=True,
@@ -81,40 +90,51 @@ if uploaded_file and uploaded_file.name != st.session_state.doc_name:
 elif st.session_state.doc_name:
     st.sidebar.success(f"✅ Active: {st.session_state.doc_name}")
 
-# ── Sidebar: clear chat ───────────────────────────────────────────────
+# ── Sidebar: Clear chat ───────────────────────────────────────────────
 if st.sidebar.button("🗑️ Clear Chat"):
     st.session_state.chat_history = []
     st.rerun()
 
-# ── Step 8: Chat UI ───────────────────────────────────────────────────
+st.sidebar.divider()
+st.sidebar.caption("IBM watsonx.ai · granite-13b-chat-v2")
+
+# ── Main: Chat UI ─────────────────────────────────────────────────────
 if not st.session_state.qa_chain:
     st.info("👈 Upload an HR Policy PDF from the sidebar to get started.")
+
 else:
-    # Display chat history
+    # Render chat history
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Input
+    # Chat input
     if question := st.chat_input("Ask about your HR policy..."):
+
         # Show user message
         st.session_state.chat_history.append({"role": "user", "content": question})
         with st.chat_message("user"):
             st.markdown(question)
 
-        # Generate answer
+        # Generate answer from Watson
         with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                result = st.session_state.qa_chain({"query": question})
-                answer = result["result"]
-                sources = list(set(
-                    doc.page_content[:100] for doc in result["source_documents"]
-                ))
-
-            st.markdown(answer)
-
-            with st.expander("📎 Source excerpts used"):
-                for i, src in enumerate(sources, 1):
-                    st.caption(f"{i}. {src}…")
-
-        st.session_state.chat_history.append({"role": "assistant", "content": answer})
+            with st.spinner("Asking Watson AI..."):
+                try:
+                    result = st.session_state.qa_chain({"query": question})
+                    answer = result["result"]
+                    sources = list(set(
+                        doc.page_content[:100] for doc in result["source_documents"]
+                    ))
+                    st.markdown(answer)
+                    with st.expander("📎 Source excerpts used"):
+                        for i, src in enumerate(sources, 1):
+                            st.caption(f"{i}. {src}…")
+                    st.session_state.chat_history.append(
+                        {"role": "assistant", "content": answer}
+                    )
+                except Exception as e:
+                    err = f"❌ Watson AI error: {str(e)}"
+                    st.error(err)
+                    st.session_state.chat_history.append(
+                        {"role": "assistant", "content": err}
+                    )
