@@ -3,9 +3,8 @@ pypdf
 langchain
 langchain-community
 langchain-ibm
+langchain-text-splitters
 ibm-watsonx-ai
 faiss-cpu
 sentence-transformers
 python-dotenv
-
-
