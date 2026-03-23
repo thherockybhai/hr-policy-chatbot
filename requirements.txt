@@ -1,22 +1,13 @@
-# Core
 streamlit
 pypdf
 python-dotenv
-
-# LangChain — each sub-package must be listed explicitly
 langchain
 langchain-core
 langchain-community
 langchain-text-splitters
-langchain-ibm
-
-# IBM Watson
-ibm-watsonx-ai
-
-# Vector store
+langchain-ibm==0.1.12
+ibm-watsonx-ai==1.1.2
 faiss-cpu
-
-# Embeddings (local, free)
 sentence-transformers
 transformers
 torch
