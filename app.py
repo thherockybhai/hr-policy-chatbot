@@ -9,9 +9,12 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 
 load_dotenv()
 
-# ── Watson REST API (no ibm-watsonx-ai SDK needed) ────────────────────
-WATSON_URL = "https://us-south.ml.cloud.ibm.com"
-IAM_URL    = "https://iam.cloud.ibm.com/identity/token"
+# ── Watson REST API config ────────────────────────────────────────────
+WATSON_BASE_URL = "https://us-south.ml.cloud.ibm.com"
+WATSON_ENDPOINT = "/ml/v1/text/chat"          # updated: chat endpoint
+WATSON_VERSION  = "2024-10-17"                # updated: latest version
+IAM_URL         = "https://iam.cloud.ibm.com/identity/token"
+MODEL_ID        = "ibm/granite-13b-chat-v2"
 
 def get_iam_token(api_key: str) -> str:
     """Exchange IBM API key for a bearer token."""
@@ -33,43 +36,57 @@ def ask_watson(question: str, context: str) -> str:
     project_id = os.environ.get("WATSONX_PROJECT_ID", "")
 
     if not api_key or not project_id:
-        return "❌ WATSONX_API_KEY or WATSONX_PROJECT_ID not set in secrets."
+        return "❌ WATSONX_API_KEY or WATSONX_PROJECT_ID not set in Streamlit secrets."
 
     token = get_iam_token(api_key)
 
-    prompt = f"""You are an HR policy assistant. Answer the employee's question using only the HR policy excerpts provided below.
-If the answer is not in the excerpts, say "I could not find this in the HR policy document."
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
 
-HR Policy Excerpts:
-{context}
-
-Employee Question: {question}
-
-Answer:"""
-
+    # Updated: messages format (chat style) instead of raw prompt
     payload = {
-        "model_id": "ibm/granite-13b-chat-v2",
-        "input": prompt,
+        "model_id": MODEL_ID,
+        "project_id": project_id,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are an HR policy assistant. Answer the employee's question "
+                    "using only the HR policy excerpts provided. "
+                    "If the answer is not in the excerpts, say: "
+                    "'I could not find this in the HR policy document.'"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"HR Policy Excerpts:\n{context}\n\n"
+                    f"Employee Question: {question}"
+                ),
+            },
+        ],
         "parameters": {
             "decoding_method": "greedy",
             "max_new_tokens": 512,
-            "repetition_penalty": 1.1,
             "temperature": 0.1,
+            "repetition_penalty": 1.1,
         },
-        "project_id": project_id,
     }
 
     resp = requests.post(
-        f"{WATSON_URL}/ml/v1/text/generation?version=2023-05-29",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        },
+        f"{WATSON_BASE_URL}{WATSON_ENDPOINT}?version={WATSON_VERSION}",
+        headers=headers,
         json=payload,
         timeout=60,
     )
     resp.raise_for_status()
-    return resp.json()["results"][0]["generated_text"].strip()
+
+    # Parse chat-style response
+    result = resp.json()
+    return result["choices"][0]["message"]["content"].strip()
 
 # ── Page config ───────────────────────────────────────────────────────
 st.set_page_config(
@@ -151,7 +168,7 @@ else:
         with st.chat_message("assistant"):
             with st.spinner("Asking Watson AI..."):
                 try:
-                    # Retrieve relevant chunks
+                    # Retrieve relevant chunks from FAISS
                     docs = st.session_state.retriever.invoke(question)
                     context = "\n\n".join(doc.page_content for doc in docs)
                     sources = [doc.page_content[:100] for doc in docs]
