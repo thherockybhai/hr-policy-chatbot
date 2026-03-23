@@ -1,7 +1,7 @@
 
 # Environment
 .env
-
+.env.example
 # ChromaDB vector store (auto-generated, don't commit)
 hr_chroma_db/
 
@@ -11,12 +11,12 @@ __pycache__/
 *.pyo
 .Python
 env/
+
 venv/
 .venv/
 *.egg-info/
 dist/
 build/
-
 # OS
 .DS_Store
 Thumbs.db
