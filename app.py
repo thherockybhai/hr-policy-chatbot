@@ -31,12 +31,10 @@ def get_iam_token(api_key: str) -> str:
     return resp.json()["access_token"]
 
 def ask_watson(question: str, context: str) -> str:
-    """Send question + retrieved context to Watson Granite via REST."""
-    api_key    = os.environ.get("WATSONX_API_KEY", "")
+    api_key = os.environ.get("WATSONX_API_KEY", "")
     project_id = os.environ.get("WATSONX_PROJECT_ID", "")
-
     if not api_key or not project_id:
-        return "❌ WATSONX_API_KEY or WATSONX_PROJECT_ID not set in Streamlit secrets."
+        return "❌ WATSONX_API_KEY or WATSONX_PROJECT_ID not set."
 
     token = get_iam_token(api_key)
 
@@ -46,29 +44,23 @@ def ask_watson(question: str, context: str) -> str:
         "Accept": "application/json",
     }
 
-    # Updated: messages format (chat style) instead of raw prompt
     payload = {
-        "model_id": MODEL_ID,
+        "model": MODEL_ID,  # "ibm/granite-13b-chat-v2" — note: use "model" key here (not model_id)
         "project_id": project_id,
         "messages": [
             {
                 "role": "system",
                 "content": (
-                    "You are an HR policy assistant. Answer the employee's question "
-                    "using only the HR policy excerpts provided. "
-                    "If the answer is not in the excerpts, say: "
-                    "'I could not find this in the HR policy document.'"
+                    "You are an HR policy assistant. Answer using only the provided HR policy excerpts. "
+                    "If not found, reply: 'I could not find this in the HR policy document.'"
                 ),
             },
             {
                 "role": "user",
-                "content": (
-                    f"HR Policy Excerpts:\n{context}\n\n"
-                    f"Employee Question: {question}"
-                ),
+                "content": f"HR Policy Excerpts:\n{context}\n\nEmployee Question: {question}",
             },
         ],
-        "parameters": {
+        "parameters": {   # Note: parameters key is still used
             "decoding_method": "greedy",
             "max_new_tokens": 512,
             "temperature": 0.1,
@@ -76,18 +68,17 @@ def ask_watson(question: str, context: str) -> str:
         },
     }
 
-    resp = requests.post(
-        f"{WATSON_BASE_URL}{WATSON_ENDPOINT}?version={WATSON_VERSION}",
-        headers=headers,
-        json=payload,
-        timeout=60,
-    )
-    resp.raise_for_status()
+    url = f"{WATSON_BASE_URL}/ml/v1/chat/completions?version={WATSON_VERSION}"
 
-    # Parse chat-style response
+    resp = requests.post(url, headers=headers, json=payload, timeout=60)
+
+    if resp.status_code != 200:
+        error_detail = resp.text
+        raise Exception(f"API error {resp.status_code}: {error_detail}")
+
     result = resp.json()
+    # Parse OpenAI-compatible response
     return result["choices"][0]["message"]["content"].strip()
-
 # ── Page config ───────────────────────────────────────────────────────
 st.set_page_config(
     page_title="HR Policy Chatbot",
