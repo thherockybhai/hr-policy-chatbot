@@ -1,16 +1,26 @@
 import os
 import streamlit as st
 from pypdf import PdfReader
+from dotenv import load_dotenv
+
+# ── LangChain imports (modern package structure) ──────────────────────
+# langchain-text-splitters (separate package since langchain 0.2+)
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+# langchain-community for vectorstores and embeddings
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain.chains import RetrievalQA
+
+# langchain-ibm for Watson
 from langchain_ibm import WatsonxLLM
 from ibm_watsonx_ai.metanames import GenTextParamsMetaNames as GenParams
-from dotenv import load_dotenv
+
+# RetrievalQA moved to langchain.chains but needs langchain-core underneath
+from langchain.chains import RetrievalQA
 
 load_dotenv()
 
+# ── Page config ───────────────────────────────────────────────────────
 st.set_page_config(
     page_title="HR Policy Chatbot",
     page_icon="📋",
@@ -20,6 +30,7 @@ st.set_page_config(
 st.title("📋 HR Policy Chatbot")
 st.caption("Powered by IBM watsonx.ai · Granite LLM · RAG")
 
+# ── Session state ─────────────────────────────────────────────────────
 if "qa_chain" not in st.session_state:
     st.session_state.qa_chain = None
 if "chat_history" not in st.session_state:
@@ -27,6 +38,7 @@ if "chat_history" not in st.session_state:
 if "doc_name" not in st.session_state:
     st.session_state.doc_name = None
 
+# ── Watson LLM ────────────────────────────────────────────────────────
 def get_llm():
     return WatsonxLLM(
         model_id="ibm/granite-13b-chat-v2",
@@ -40,30 +52,38 @@ def get_llm():
         }
     )
 
+# ── Sidebar: Upload PDF ───────────────────────────────────────────────
 st.sidebar.header("📄 Upload Document")
 uploaded_file = st.sidebar.file_uploader("Choose an HR Policy PDF", type=["pdf"])
 
 if uploaded_file and uploaded_file.name != st.session_state.doc_name:
     with st.spinner("Reading and indexing your PDF..."):
 
+        # Step 1: Read PDF
         reader = PdfReader(uploaded_file)
         raw_text = ""
         for page in reader.pages:
             raw_text += page.extract_text() or ""
 
+        # Step 2: Chunk
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=500,
             chunk_overlap=50,
         )
         chunks = splitter.split_text(raw_text)
 
+        # Step 3: Embed locally (free, no API key needed)
         embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
 
+        # Step 4: FAISS vector store
         vectorstore = FAISS.from_texts(chunks, embeddings)
+
+        # Step 5: Retriever
         retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
+        # Step 6: RAG chain
         st.session_state.qa_chain = RetrievalQA.from_chain_type(
             llm=get_llm(),
             chain_type="stuff",
@@ -86,6 +106,7 @@ if st.sidebar.button("🗑️ Clear Chat"):
 st.sidebar.divider()
 st.sidebar.caption("IBM watsonx.ai · granite-13b-chat-v2")
 
+# ── Chat UI ───────────────────────────────────────────────────────────
 if not st.session_state.qa_chain:
     st.info("👈 Upload an HR Policy PDF from the sidebar to get started.")
 else:
@@ -114,7 +135,7 @@ else:
                         {"role": "assistant", "content": answer}
                     )
                 except Exception as e:
-                    err = f"❌ Watson AI error: {str(e)}"
+                    err = f"❌ Error: {str(e)}"
                     st.error(err)
                     st.session_state.chat_history.append(
                         {"role": "assistant", "content": err}
