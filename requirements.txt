@@ -1,10 +1,22 @@
+# Core
 streamlit
 pypdf
-langchain
-langchain-community
-langchain-ibm
-langchain-text-splitters
-ibm-watsonx-ai
-faiss-cpu
-sentence-transformers
 python-dotenv
+
+# LangChain — each sub-package must be listed explicitly
+langchain
+langchain-core
+langchain-community
+langchain-text-splitters
+langchain-ibm
+
+# IBM Watson
+ibm-watsonx-ai
+
+# Vector store
+faiss-cpu
+
+# Embeddings (local, free)
+sentence-transformers
+transformers
+torch
