@@ -1,84 +1,14 @@
 import os
-import requests
 import streamlit as st
-from pypdf import PdfReader
-from dotenv import load_dotenv
+from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from ibm_watsonx_ai.foundation_models import Model
+from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Watson REST API config ────────────────────────────────────────────
-WATSON_BASE_URL = "https://us-south.ml.cloud.ibm.com"
-WATSON_ENDPOINT = "/ml/v1/text/chat"          # updated: chat endpoint
-WATSON_VERSION  = "2024-10-17"                # updated: latest version
-IAM_URL         = "https://iam.cloud.ibm.com/identity/token"
-MODEL_ID        = "ibm/granite-13b-chat-v2"
-
-def get_iam_token(api_key: str) -> str:
-    """Exchange IBM API key for a bearer token."""
-    resp = requests.post(
-        IAM_URL,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        data={
-            "grant_type": "urn:ibm:params:oauth:grant-type:apikey",
-            "apikey": api_key,
-        },
-        timeout=30,
-    )
-    resp.raise_for_status()
-    return resp.json()["access_token"]
-
-def ask_watson(question: str, context: str) -> str:
-    api_key = os.environ.get("WATSONX_API_KEY", "")
-    project_id = os.environ.get("WATSONX_PROJECT_ID", "")
-    if not api_key or not project_id:
-        return "❌ WATSONX_API_KEY or WATSONX_PROJECT_ID not set."
-
-    token = get_iam_token(api_key)
-
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    }
-
-    payload = {
-        "model": MODEL_ID,  # "ibm/granite-13b-chat-v2" — note: use "model" key here (not model_id)
-        "project_id": project_id,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are an HR policy assistant. Answer using only the provided HR policy excerpts. "
-                    "If not found, reply: 'I could not find this in the HR policy document.'"
-                ),
-            },
-            {
-                "role": "user",
-                "content": f"HR Policy Excerpts:\n{context}\n\nEmployee Question: {question}",
-            },
-        ],
-        "parameters": {   # Note: parameters key is still used
-            "decoding_method": "greedy",
-            "max_new_tokens": 512,
-            "temperature": 0.1,
-            "repetition_penalty": 1.1,
-        },
-    }
-
-    url = f"{WATSON_BASE_URL}/ml/v1/chat/completions?version={WATSON_VERSION}"
-
-    resp = requests.post(url, headers=headers, json=payload, timeout=60)
-
-    if resp.status_code != 200:
-        error_detail = resp.text
-        raise Exception(f"API error {resp.status_code}: {error_detail}")
-
-    result = resp.json()
-    # Parse OpenAI-compatible response
-    return result["choices"][0]["message"]["content"].strip()
 # ── Page config ───────────────────────────────────────────────────────
 st.set_page_config(
     page_title="HR Policy Chatbot",
@@ -87,51 +17,70 @@ st.set_page_config(
 )
 
 st.title("📋 HR Policy Chatbot")
-st.caption("Powered by IBM watsonx.ai · Granite LLM · RAG")
+st.caption("Powered by IBM watsonx.ai · Granite · RAG")
 
 # ── Session state ─────────────────────────────────────────────────────
-if "retriever" not in st.session_state:
-    st.session_state.retriever = None
+if "vectorstore" not in st.session_state:
+    st.session_state.vectorstore = None
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 if "doc_name" not in st.session_state:
     st.session_state.doc_name = None
+if "model" not in st.session_state:
+    st.session_state.model = None
 
-# ── Sidebar ───────────────────────────────────────────────────────────
+# ── Watson Model init ─────────────────────────────────────────────────
+def get_model():
+    return Model(
+        model_id="ibm/granite-3-8b-instruct",
+        params={
+            "decoding_method": "greedy",
+            "max_new_tokens": 300,
+        },
+        credentials={
+            "apikey": os.environ.get("WATSONX_API_KEY"),
+            "url": "https://eu-de.ml.cloud.ibm.com",
+        },
+        project_id=os.environ.get("WATSONX_PROJECT_ID"),
+    )
+
+# ── Sidebar: Upload PDF ───────────────────────────────────────────────
 st.sidebar.header("📄 Upload Document")
 uploaded_file = st.sidebar.file_uploader("Choose an HR Policy PDF", type=["pdf"])
 
 if uploaded_file and uploaded_file.name != st.session_state.doc_name:
     with st.spinner("Reading and indexing your PDF..."):
 
-        # Step 1: Read PDF
-        reader = PdfReader(uploaded_file)
-        raw_text = ""
-        for page in reader.pages:
-            raw_text += page.extract_text() or ""
+        # Save uploaded file temporarily
+        with open("temp.pdf", "wb") as f:
+            f.write(uploaded_file.read())
+
+        # Step 1: Load PDF
+        loader = PyPDFLoader("temp.pdf")
+        documents = loader.load()
 
         # Step 2: Chunk
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=500,
             chunk_overlap=50,
         )
-        chunks = splitter.split_text(raw_text)
+        chunks = splitter.split_documents(documents)
 
-        # Step 3: Embed locally (free, no API key)
+        # Step 3: Embed locally
         embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
 
         # Step 4: FAISS vector store
-        vectorstore = FAISS.from_texts(chunks, embeddings)
-        st.session_state.retriever = vectorstore.as_retriever(
-            search_kwargs={"k": 4}
-        )
+        st.session_state.vectorstore = FAISS.from_documents(chunks, embeddings)
         st.session_state.doc_name = uploaded_file.name
         st.session_state.chat_history = []
 
+        # Step 5: Init Watson model once
+        st.session_state.model = get_model()
+
     st.sidebar.success(f"✅ Indexed: {uploaded_file.name}")
-    st.sidebar.info(f"📊 {len(reader.pages)} pages · {len(chunks)} chunks")
+    st.sidebar.info(f"📊 {len(documents)} pages · {len(chunks)} chunks")
 
 elif st.session_state.doc_name:
     st.sidebar.success(f"✅ Active: {st.session_state.doc_name}")
@@ -141,12 +90,13 @@ if st.sidebar.button("🗑️ Clear Chat"):
     st.rerun()
 
 st.sidebar.divider()
-st.sidebar.caption("IBM watsonx.ai · granite-13b-chat-v2")
+st.sidebar.caption("IBM watsonx.ai · granite-3-8b-instruct · eu-de")
 
 # ── Chat UI ───────────────────────────────────────────────────────────
-if not st.session_state.retriever:
+if not st.session_state.vectorstore:
     st.info("👈 Upload an HR Policy PDF from the sidebar to get started.")
 else:
+    # Render chat history
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
@@ -159,13 +109,28 @@ else:
         with st.chat_message("assistant"):
             with st.spinner("Asking Watson AI..."):
                 try:
-                    # Retrieve relevant chunks from FAISS
-                    docs = st.session_state.retriever.invoke(question)
+                    # Retrieve relevant chunks
+                    retriever = st.session_state.vectorstore.as_retriever(
+                        search_kwargs={"k": 3}
+                    )
+                    docs = retriever.get_relevant_documents(question)
                     context = "\n\n".join(doc.page_content for doc in docs)
                     sources = [doc.page_content[:100] for doc in docs]
 
-                    # Call Watson via REST
-                    answer = ask_watson(question, context)
+                    # Build prompt
+                    prompt = f"""You are an HR assistant. Answer ONLY from the context below.
+If the answer is not in the context, say: I could not find this in the HR policy document.
+
+Context:
+{context}
+
+Question:
+{question}
+
+Answer:"""
+
+                    # Call Watson
+                    answer = st.session_state.model.generate_text(prompt=prompt)
 
                     st.markdown(answer)
                     with st.expander("📎 Source excerpts used"):
@@ -175,8 +140,9 @@ else:
                     st.session_state.chat_history.append(
                         {"role": "assistant", "content": answer}
                     )
+
                 except Exception as e:
-                    err = f"❌ Error: {str(e)}"
+                    err = f"❌ Watson AI error: {str(e)}"
                     st.error(err)
                     st.session_state.chat_history.append(
                         {"role": "assistant", "content": err}
