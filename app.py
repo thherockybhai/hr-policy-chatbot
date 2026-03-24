@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 import streamlit as st
 from dotenv import load_dotenv
@@ -11,17 +12,10 @@ from ibm_watsonx_ai.foundation_models import Model
 
 load_dotenv()
 
-# ── Page config ───────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="HR Policy Chatbot",
-    page_icon="📋",
-    layout="centered"
-)
-
+st.set_page_config(page_title="HR Policy Chatbot", page_icon="📋", layout="centered")
 st.title("📋 HR Policy Chatbot")
 st.caption("Powered by IBM watsonx.ai · Granite · RAG")
 
-# ── Session state ─────────────────────────────────────────────────────
 if "vectorstore" not in st.session_state:
     st.session_state.vectorstore = None
 if "chat_history" not in st.session_state:
@@ -31,14 +25,10 @@ if "indexed_files" not in st.session_state:
 if "model" not in st.session_state:
     st.session_state.model = None
 
-# ── Watson Model ──────────────────────────────────────────────────────
 def get_model():
     return Model(
         model_id="ibm/granite-3-8b-instruct",
-        params={
-            "decoding_method": "greedy",
-            "max_new_tokens": 300,
-        },
+        params={"decoding_method": "greedy", "max_new_tokens": 300},
         credentials={
             "apikey": os.environ.get("WATSONX_API_KEY"),
             "url": "https://eu-de.ml.cloud.ibm.com",
@@ -46,27 +36,43 @@ def get_model():
         project_id=os.environ.get("WATSONX_PROJECT_ID"),
     )
 
-# ── File loader per format ────────────────────────────────────────────
-def load_file(uploaded_file) -> list[Document]:
-    ext = uploaded_file.name.split(".")[-1].lower()
+def clean_answer(raw: str) -> str:
+    """Cut everything after the first new question or Q&A pattern."""
+    answer = raw
+    stop_patterns = [
+        r"\nQuestion[\s]*:",
+        r"\nQ[\s]*:",
+        r"\nAnswer[\s]*:",
+        r"\nA[\s]*:",
+        r"\n(Can|How|What|When|Where|Why|Is|Do|Will|Are|Should|May|Could)\s+\w",
+        r"<\|user\|>",
+        r"<\|system\|>",
+        r"<\|assistant\|>",
+    ]
+    for pattern in stop_patterns:
+        m = re.search(pattern, answer, re.IGNORECASE)
+        if m:
+            answer = answer[:m.start()]
+    answer = answer.strip()
+    if not answer:
+        answer = "I could not find this in the HR policy documents."
+    return answer
 
+def load_file(uploaded_file) -> list:
+    ext = uploaded_file.name.split(".")[-1].lower()
     with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
         tmp.write(uploaded_file.read())
         tmp_path = tmp.name
-
     try:
         if ext == "pdf":
             from langchain_community.document_loaders import PyPDFLoader
             docs = PyPDFLoader(tmp_path).load()
-
         elif ext == "docx":
             from langchain_community.document_loaders import Docx2txtLoader
             docs = Docx2txtLoader(tmp_path).load()
-
         elif ext == "txt":
             from langchain_community.document_loaders import TextLoader
             docs = TextLoader(tmp_path, encoding="utf-8").load()
-
         elif ext in ("xlsx", "xls"):
             import pandas as pd
             engine = "openpyxl" if ext == "xlsx" else "xlrd"
@@ -82,7 +88,6 @@ def load_file(uploaded_file) -> list[Document]:
                 for i, row in df.iterrows()
             ]
             docs = [d for d in docs if d.page_content.strip()]
-
         elif ext == "csv":
             import pandas as pd
             df = pd.read_csv(tmp_path)
@@ -97,16 +102,11 @@ def load_file(uploaded_file) -> list[Document]:
                 for i, row in df.iterrows()
             ]
             docs = [d for d in docs if d.page_content.strip()]
-
         else:
             raise ValueError(f"Unsupported file type: .{ext}")
-
-        # Tag every doc with its source filename
         for doc in docs:
             doc.metadata["source"] = uploaded_file.name
-
         return docs
-
     finally:
         os.unlink(tmp_path)
 
@@ -117,77 +117,49 @@ st.sidebar.caption("PDF, DOCX, TXT, XLSX, XLS, CSV · Multiple files allowed")
 uploaded_files = st.sidebar.file_uploader(
     "Choose files",
     type=["pdf", "docx", "txt", "xlsx", "xls", "csv"],
-    accept_multiple_files=True        # ← key change
+    accept_multiple_files=True
 )
 
-# Index button — only shown when files are uploaded
 if uploaded_files:
-    new_files = [
-        f for f in uploaded_files
-        if f.name not in st.session_state.indexed_files
-    ]
-
+    new_files = [f for f in uploaded_files if f.name not in st.session_state.indexed_files]
     if new_files:
         if st.sidebar.button(f"📥 Index {len(new_files)} new file(s)"):
             all_chunks = []
             failed = []
-
             progress = st.sidebar.progress(0, text="Starting...")
-
             for i, file in enumerate(new_files):
                 try:
-                    progress.progress(
-                        int((i / len(new_files)) * 100),
-                        text=f"Loading {file.name}..."
-                    )
+                    progress.progress(int((i / len(new_files)) * 100), text=f"Loading {file.name}...")
                     docs = load_file(file)
-
-                    splitter = RecursiveCharacterTextSplitter(
-                        chunk_size=500,
-                        chunk_overlap=50,
-                    )
+                    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
                     chunks = splitter.split_documents(docs)
                     all_chunks.extend(chunks)
                     st.session_state.indexed_files.append(file.name)
-
                 except Exception as e:
                     failed.append(f"{file.name}: {str(e)}")
-
             if all_chunks:
                 progress.progress(90, text="Building vector index...")
-                embeddings = HuggingFaceEmbeddings(
-                    model_name="sentence-transformers/all-MiniLM-L6-v2"
-                )
-
+                embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
                 if st.session_state.vectorstore is None:
-                    # First time — create fresh
-                    st.session_state.vectorstore = FAISS.from_documents(
-                        all_chunks, embeddings
-                    )
+                    st.session_state.vectorstore = FAISS.from_documents(all_chunks, embeddings)
                 else:
-                    # Add to existing index
                     new_vs = FAISS.from_documents(all_chunks, embeddings)
                     st.session_state.vectorstore.merge_from(new_vs)
-
                 if st.session_state.model is None:
                     st.session_state.model = get_model()
-
                 progress.progress(100, text="Done!")
                 st.sidebar.success(f"✅ Indexed {len(new_files)} file(s)")
-
             if failed:
                 for f in failed:
                     st.sidebar.error(f"❌ {f}")
     else:
         st.sidebar.success("✅ All uploaded files already indexed")
 
-# ── Indexed files list ────────────────────────────────────────────────
 if st.session_state.indexed_files:
     st.sidebar.divider()
     st.sidebar.markdown("**Indexed documents:**")
     for fname in st.session_state.indexed_files:
         st.sidebar.caption(f"📄 {fname}")
-
     if st.sidebar.button("🗑️ Clear all documents"):
         st.session_state.vectorstore = None
         st.session_state.indexed_files = []
@@ -218,45 +190,39 @@ else:
         with st.chat_message("assistant"):
             with st.spinner("Asking Watson AI..."):
                 try:
-                    retriever = st.session_state.vectorstore.as_retriever(
-                        search_kwargs={"k": 4}
-                    )
+                    retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 4})
                     docs = retriever.invoke(question)
                     context = "\n\n".join(doc.page_content for doc in docs)
-
-                    # Show which documents the answer came from
-                    sources = list(set(
-                        doc.metadata.get("source", "unknown") for doc in docs
-                    ))
+                    sources = list(set(doc.metadata.get("source", "unknown") for doc in docs))
                     excerpts = [doc.page_content[:100] for doc in docs]
 
-                    prompt = f"""You are an HR assistant. Answer ONLY from the context below.
-If the answer is not in the context, say: I could not find this in the HR policy documents.
+                    system_msg = (
+                        "You are an HR policy assistant. Answer ONE question in 1-3 sentences. "
+                        "Use ONLY the context provided. Do NOT write more questions or answers after yours. "
+                        "Stop after your answer. If not found in context say: "
+                        "I could not find this in the HR policy documents."
+                    )
+                    prompt = (
+                        f"<|system|>\n{system_msg}\n"
+                        f"<|user|>\nContext:\n{context}\n\nQuestion: {question}\n"
+                        f"<|assistant|>\n"
+                    )
 
-Context:
-{context}
-
-Question:
-{question}
-
-Answer:"""
-
-                    answer = st.session_state.model.generate_text(prompt=prompt)
+                    if st.session_state.model is None:
+                        st.session_state.model = get_model()
+                    raw = st.session_state.model.generate_text(prompt=prompt)
+                    answer = clean_answer(raw)
 
                     st.markdown(answer)
-
                     with st.expander("📎 Sources used"):
                         st.caption(f"**Documents:** {', '.join(sources)}")
                         for i, exc in enumerate(excerpts, 1):
                             st.caption(f"{i}. {exc}…")
 
-                    st.session_state.chat_history.append(
-                        {"role": "assistant", "content": answer}
-                    )
+                    st.session_state.chat_history.append({"role": "assistant", "content": answer})
 
                 except Exception as e:
                     err = f"❌ Watson AI error: {str(e)}"
                     st.error(err)
-                    st.session_state.chat_history.append(
-                        {"role": "assistant", "content": err}
-                    )
+                    st.session_state.chat_history.append({"role": "assistant", "content": err})
+                    
