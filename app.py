@@ -225,4 +225,3 @@ else:
                     err = f"❌ Watson AI error: {str(e)}"
                     st.error(err)
                     st.session_state.chat_history.append({"role": "assistant", "content": err})
-                    
