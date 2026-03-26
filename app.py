@@ -14,9 +14,208 @@ from ibm_watsonx_ai.foundation_models import Model
 
 load_dotenv()
 
-st.set_page_config(page_title="HR Policy Chatbot", page_icon="📋", layout="centered")
-st.title("📋 HR Policy Chatbot")
-st.caption("Powered by IBM watsonx.ai · Granite · RAG")
+st.set_page_config(
+    page_title="HR Policy Chatbot",
+    page_icon="📋",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ── IBM Dark Theme CSS ────────────────────────────────────────────────
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'IBM Plex Sans', sans-serif !important;
+}
+
+/* ── Page background ── */
+.stApp {
+    background-color: #0a0d14 !important;
+}
+
+/* ── Hide default Streamlit header/footer ── */
+#MainMenu, footer, header { visibility: hidden; }
+
+/* ── Custom top header bar ── */
+.custom-header {
+    background: #0d111c;
+    border-bottom: 1px solid #1a2035;
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: -1rem -1rem 1.5rem -1rem;
+    border-radius: 0;
+}
+.header-left { display: flex; align-items: center; gap: 10px; }
+.logo-mark {
+    width: 28px; height: 28px;
+    background: #1a56db;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700; color: white;
+}
+.header-title { font-size: 15px; font-weight: 600; color: #e2e8f0; letter-spacing: -0.01em; }
+.header-badge {
+    background: #0f2040;
+    border: 1px solid #1a3a6e;
+    color: #60a5fa;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 4px;
+}
+.dot-green { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #22c55e; margin-right: 5px; }
+
+/* ── Sidebar ── */
+[data-testid="stSidebar"] {
+    background-color: #0d111c !important;
+    border-right: 1px solid #1a2035 !important;
+}
+[data-testid="stSidebar"] * {
+    color: #94a3b8 !important;
+    font-family: 'IBM Plex Sans', sans-serif !important;
+}
+[data-testid="stSidebar"] .stFileUploader {
+    background: #111827 !important;
+    border: 1.5px dashed #1e2d45 !important;
+    border-radius: 8px !important;
+    padding: 8px !important;
+}
+[data-testid="stSidebar"] .stButton > button {
+    background: #1a56db !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 7px !important;
+    font-family: 'IBM Plex Sans', sans-serif !important;
+    font-weight: 500 !important;
+    width: 100% !important;
+    transition: background 0.2s !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    background: #2563eb !important;
+}
+
+/* ── Weather card in sidebar ── */
+.weather-card {
+    background: #111827;
+    border: 1px solid #1a2035;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+}
+.weather-city { font-size: 12px; font-weight: 600; color: #60a5fa !important; }
+.weather-temp { font-size: 22px; font-weight: 600; color: #e2e8f0 !important; }
+.weather-desc { font-size: 11px; color: #64748b !important; }
+.weather-row { display: flex; gap: 12px; margin-top: 4px; font-size: 10px; color: #374151 !important; font-family: 'IBM Plex Mono', monospace; }
+
+/* ── Indexed file pills ── */
+.file-pill {
+    background: #111827;
+    border: 1px solid #1a2035;
+    border-radius: 5px;
+    padding: 4px 8px;
+    font-size: 11px;
+    color: #64748b;
+    margin-bottom: 4px;
+    display: block;
+}
+
+/* ── Main chat area ── */
+.main-chat {
+    background: #0a0d14;
+    max-width: 780px;
+    margin: 0 auto;
+}
+
+/* ── Chat messages ── */
+[data-testid="stChatMessage"] {
+    background: transparent !important;
+    border: none !important;
+}
+[data-testid="stChatMessageContent"] {
+    background: #111827 !important;
+    border: 1px solid #1a2035 !important;
+    border-radius: 10px !important;
+    color: #cbd5e1 !important;
+    font-size: 13px !important;
+    line-height: 1.65 !important;
+}
+[data-testid="stChatMessage"][data-testid*="user"] [data-testid="stChatMessageContent"] {
+    background: #0f2040 !important;
+    border-color: #1a3a6e !important;
+    color: #bfdbfe !important;
+}
+
+/* ── Chat input ── */
+[data-testid="stChatInput"] {
+    background: #0d111c !important;
+    border-top: 1px solid #1a2035 !important;
+    padding: 12px 0 !important;
+}
+[data-testid="stChatInput"] textarea {
+    background: #111827 !important;
+    border: 1px solid #1e2d45 !important;
+    border-radius: 8px !important;
+    color: #e2e8f0 !important;
+    font-family: 'IBM Plex Sans', sans-serif !important;
+    font-size: 13px !important;
+}
+[data-testid="stChatInput"] textarea:focus {
+    border-color: #1a56db !important;
+}
+[data-testid="stChatInput"] button {
+    background: #1a56db !important;
+    border-radius: 8px !important;
+}
+
+/* ── Expander (sources) ── */
+[data-testid="stExpander"] {
+    background: #0d111c !important;
+    border: 1px solid #1a2035 !important;
+    border-radius: 7px !important;
+}
+[data-testid="stExpander"] summary {
+    color: #374151 !important;
+    font-size: 11px !important;
+    font-family: 'IBM Plex Mono', monospace !important;
+}
+
+/* ── Info/success/error boxes ── */
+[data-testid="stAlert"] {
+    background: #111827 !important;
+    border: 1px solid #1a2035 !important;
+    border-radius: 8px !important;
+    color: #94a3b8 !important;
+}
+
+/* ── Progress bar ── */
+[data-testid="stProgressBar"] > div > div {
+    background: #1a56db !important;
+}
+
+/* ── Divider ── */
+hr { border-color: #1a2035 !important; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1a2035; border-radius: 2px; }
+</style>
+""", unsafe_allow_html=True)
+
+# ── Custom header ─────────────────────────────────────────────────────
+st.markdown("""
+<div class="custom-header">
+    <div class="header-left">
+        <div class="logo-mark">W</div>
+        <span class="header-title">HR Policy Chatbot</span>
+    </div>
+    <span class="header-badge"><span class="dot-green"></span>watsonx.ai · granite-3-8b-instruct</span>
+</div>
+""", unsafe_allow_html=True)
 
 # ── Session state ─────────────────────────────────────────────────────
 for key, default in {
@@ -42,9 +241,8 @@ def get_model():
         project_id=os.environ.get("WATSONX_PROJECT_ID"),
     )
 
-# ── Location + Weather (free, no API key) ─────────────────────────────
+# ── Location + Weather ────────────────────────────────────────────────
 def get_location():
-    """Get city from IP using ip-api.com (free, no key needed)."""
     try:
         r = requests.get("http://ip-api.com/json/", timeout=5)
         data = r.json()
@@ -61,7 +259,6 @@ def get_location():
     return {"city": "your city", "region": "", "country": "", "lat": 12.97, "lon": 77.59}
 
 def get_weather(lat, lon):
-    """Get current weather from Open-Meteo (free, no key needed)."""
     try:
         url = (
             f"https://api.open-meteo.com/v1/forecast"
@@ -75,59 +272,34 @@ def get_weather(lat, lon):
         code = current.get("weathercode", 0)
         temp = current.get("temperature_2m", 25)
         humidity = current.get("relativehumidity_2m", 50)
-
-        # WMO weather code to description
-        if code == 0:
-            desc = "clear skies"
-        elif code in (1, 2):
-            desc = "partly cloudy"
-        elif code == 3:
-            desc = "overcast"
-        elif code in (45, 48):
-            desc = "foggy"
-        elif code in (51, 53, 55, 61, 63, 65):
-            desc = "rainy"
-        elif code in (71, 73, 75):
-            desc = "snowy"
-        elif code in (95, 96, 99):
-            desc = "stormy"
-        else:
-            desc = "pleasant"
-
-        return {
-            "temp": round(temp),
-            "desc": desc,
-            "humidity": humidity,
-            "code": code,
-        }
+        wind = current.get("windspeed_10m", 0)
+        if code == 0: desc, icon = "Clear skies", "☀️"
+        elif code in (1, 2): desc, icon = "Partly cloudy", "⛅"
+        elif code == 3: desc, icon = "Overcast", "☁️"
+        elif code in (45, 48): desc, icon = "Foggy", "🌫️"
+        elif code in (51, 53, 55, 61, 63, 65): desc, icon = "Rainy", "🌧️"
+        elif code in (71, 73, 75): desc, icon = "Snowy", "❄️"
+        elif code in (95, 96, 99): desc, icon = "Stormy", "⛈️"
+        else: desc, icon = "Pleasant", "🌤️"
+        return {"temp": round(temp), "desc": desc.lower(), "icon": icon, "humidity": int(humidity), "wind": round(wind), "code": code}
     except Exception:
         pass
-    return {"temp": 28, "desc": "pleasant", "humidity": 60, "code": 0}
+    return {"temp": 28, "desc": "pleasant", "icon": "🌤️", "humidity": 60, "wind": 10, "code": 0}
 
 def get_season(lat):
-    """Determine season based on hemisphere and month."""
     month = datetime.now().month
     is_northern = lat >= 0
     if is_northern:
-        if month in (12, 1, 2):
-            return "winter"
-        elif month in (3, 4, 5):
-            return "spring"
-        elif month in (6, 7, 8):
-            return "summer"
-        else:
-            return "autumn"
+        if month in (12, 1, 2): return "winter"
+        elif month in (3, 4, 5): return "spring"
+        elif month in (6, 7, 8): return "summer"
+        else: return "autumn"
     else:
-        if month in (12, 1, 2):
-            return "summer"
-        elif month in (3, 4, 5):
-            return "autumn"
-        elif month in (6, 7, 8):
-            return "winter"
-        else:
-            return "spring"
+        if month in (12, 1, 2): return "summer"
+        elif month in (3, 4, 5): return "autumn"
+        elif month in (6, 7, 8): return "winter"
+        else: return "spring"
 
-# Food suggestions by city (expand as needed)
 CITY_FOODS = {
     "bengaluru": ["Bisi Bele Bath", "Masala Dosa", "Dum Biryani", "Filter Coffee", "Mysore Pak"],
     "bangalore": ["Bisi Bele Bath", "Masala Dosa", "Dum Biryani", "Filter Coffee", "Mysore Pak"],
@@ -139,7 +311,6 @@ CITY_FOODS = {
     "pune": ["Misal Pav", "Sabudana Khichdi", "Mastani"],
     "hassan": ["Akki Roti", "Ragi Mudde", "Kesari Bath"],
 }
-
 WEATHER_FOODS = {
     "rainy": ["hot pakoras", "masala chai", "Maggi noodles", "samosas"],
     "summer": ["watermelon juice", "coconut water", "mango lassi", "chaas"],
@@ -149,45 +320,34 @@ WEATHER_FOODS = {
     "partly cloudy": ["chai", "samosas", "bhel puri"],
 }
 
-def get_greeting(city: str, weather: dict, season: str) -> str:
-    """Generate a warm, weather + food aware greeting."""
+def get_greeting(city, weather, season):
+    import random
     city_lower = city.lower()
     temp = weather["temp"]
     desc = weather["desc"]
-
-    # Pick city food
+    icon = weather.get("icon", "😊")
     city_food = None
     for key, foods in CITY_FOODS.items():
         if key in city_lower:
-            import random
             city_food = random.choice(foods)
             break
-
-    # Pick weather/season food
-    import random
     weather_food = None
     if desc in WEATHER_FOODS:
         weather_food = random.choice(WEATHER_FOODS[desc])
     elif season in WEATHER_FOODS:
         weather_food = random.choice(WEATHER_FOODS[season])
-
-    greetings = []
-
-    # Weather-based openers
     if desc == "rainy":
-        greetings.append(f"Hey! It's a lovely rainy day in {city} ({temp}°C) ☔")
+        opener = f"Hey! It's a lovely rainy day in {city} ({temp}°C) {icon}"
     elif desc == "clear skies" and temp > 30:
-        greetings.append(f"Hey! It's a sunny {temp}°C in {city} today ☀️")
+        opener = f"Hey! It's a hot sunny {temp}°C in {city} today {icon}"
     elif desc == "clear skies":
-        greetings.append(f"Hey! Beautiful clear skies in {city} today ({temp}°C) 🌤️")
+        opener = f"Hey! Beautiful clear skies in {city} today ({temp}°C) {icon}"
     elif desc == "stormy":
-        greetings.append(f"Hey! Stay safe — it's stormy in {city} right now ⛈️")
+        opener = f"Hey! Stay safe — it's stormy in {city} right now {icon}"
     elif desc == "foggy":
-        greetings.append(f"Hey! Misty morning in {city} ({temp}°C) 🌫️")
+        opener = f"Hey! Misty morning in {city} ({temp}°C) {icon}"
     else:
-        greetings.append(f"Hey! Hope you're enjoying the {desc} weather in {city} ({temp}°C) 😊")
-
-    # Season + food tip
+        opener = f"Hey! Hope you're enjoying the {desc} weather in {city} ({temp}°C) {icon}"
     if season == "summer" and temp > 32:
         tip = f"Stay hydrated! Perfect day for some {weather_food or 'coconut water'} 🥤"
     elif season == "winter":
@@ -197,11 +357,9 @@ def get_greeting(city: str, weather: dict, season: str) -> str:
     elif city_food:
         tip = f"Also — have you tried the {city_food} here? Absolutely must-try! 😋"
     else:
-        tip = f"Hope you're having a great day!"
+        tip = "Hope you're having a wonderful day!"
+    return f"{opener}\n\n{tip}\n\nI'm your HR Policy Assistant — feel free to ask me anything about your HR policies! 📋"
 
-    return f"{greetings[0]} {tip}\n\nI'm your HR Policy Assistant — feel free to ask me anything about your HR policies!"
-
-# ── Detect non-HR / small talk ────────────────────────────────────────
 GREETINGS = {"hi", "hello", "hey", "hii", "helo", "howdy", "sup", "yo", "greetings"}
 SMALL_TALK = {
     "how are you", "how r u", "how are u", "what's up", "whats up",
@@ -210,53 +368,38 @@ SMALL_TALK = {
     "cool", "nice", "great", "awesome", "who are you", "what are you",
 }
 
-def is_greeting(text: str) -> bool:
-    return text.strip().lower() in GREETINGS
-
-def is_small_talk(text: str) -> bool:
+def is_small_talk(text):
     t = text.strip().lower().rstrip("!?.")
-    return t in SMALL_TALK or any(t.startswith(g) for g in GREETINGS)
+    return t in SMALL_TALK or t in GREETINGS or any(t.startswith(g) for g in GREETINGS)
 
-def get_small_talk_reply(text: str, city: str, weather: dict) -> str:
+def get_small_talk_reply(text, city, weather):
     t = text.strip().lower().rstrip("!?.")
     temp = weather["temp"]
     desc = weather["desc"]
-
-    if any(t.startswith(g) for g in GREETINGS) or t in GREETINGS:
+    if t in GREETINGS or any(t.startswith(g) for g in GREETINGS):
         season = get_season(st.session_state.location.get("lat", 12.97))
         return get_greeting(city, weather, season)
-
-    if "how are you" in t or "how r u" in t or "how are u" in t:
+    if "how are you" in t or "how r u" in t:
         return f"I'm doing great, thanks for asking! 😊 It's {desc} and {temp}°C in {city} — hope you're comfortable! How can I help you with HR policies today?"
-
     if "good morning" in t:
         return f"Good morning! 🌅 It's {temp}°C and {desc} in {city} right now. Hope you have a wonderful day ahead! Ask me anything about HR policies."
-
     if "good afternoon" in t:
         return f"Good afternoon! ☀️ A {desc} afternoon in {city} at {temp}°C. How can I assist you with HR policies?"
-
     if "good evening" in t:
         return f"Good evening! 🌙 It's {temp}°C in {city} tonight. How can I help you with HR policies?"
-
     if "good night" in t:
         return "Good night! 🌙 Rest well. Come back anytime you have HR policy questions!"
-
     if t in ("bye", "goodbye", "see you"):
         return f"Goodbye! 👋 Stay safe in the {desc} weather in {city}. Come back anytime!"
-
     if "thank" in t:
         return "You're welcome! 😊 Feel free to ask anytime."
-
     if "who are you" in t or "what are you" in t:
         return "I'm your HR Policy Assistant powered by IBM watsonx.ai! Upload your HR policy documents and I'll answer any questions from them. 📋"
-
     if t in ("ok", "okay", "cool", "nice", "great", "awesome"):
         return "😊 Let me know if you have any HR policy questions!"
-
     return "I'm here to help with your HR policy questions! Feel free to ask anything. 😊"
 
-# ── Answer cleaner ────────────────────────────────────────────────────
-def clean_answer(raw: str) -> str:
+def clean_answer(raw):
     answer = raw
     stop_patterns = [
         r"\nQuestion[\s]*:", r"\nQ[\s]*:",
@@ -273,8 +416,7 @@ def clean_answer(raw: str) -> str:
         answer = "I could not find this in the HR policy documents."
     return answer
 
-# ── File loader ───────────────────────────────────────────────────────
-def load_file(uploaded_file) -> list:
+def load_file(uploaded_file):
     ext = uploaded_file.name.split(".")[-1].lower()
     with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
         tmp.write(uploaded_file.read())
@@ -291,32 +433,13 @@ def load_file(uploaded_file) -> list:
             docs = TextLoader(tmp_path, encoding="utf-8").load()
         elif ext in ("xlsx", "xls"):
             import pandas as pd
-            engine = "openpyxl" if ext == "xlsx" else "xlrd"
-            df = pd.read_excel(tmp_path, engine=engine)
-            docs = [
-                Document(
-                    page_content=" | ".join(
-                        f"{col}: {val}" for col, val in row.items()
-                        if str(val).strip() not in ("", "nan", "None")
-                    ),
-                    metadata={"row": i, "source": uploaded_file.name}
-                )
-                for i, row in df.iterrows()
-            ]
+            df = pd.read_excel(tmp_path, engine="openpyxl" if ext == "xlsx" else "xlrd")
+            docs = [Document(page_content=" | ".join(f"{c}: {v}" for c, v in row.items() if str(v).strip() not in ("", "nan", "None")), metadata={"row": i, "source": uploaded_file.name}) for i, row in df.iterrows()]
             docs = [d for d in docs if d.page_content.strip()]
         elif ext == "csv":
             import pandas as pd
             df = pd.read_csv(tmp_path)
-            docs = [
-                Document(
-                    page_content=" | ".join(
-                        f"{col}: {val}" for col, val in row.items()
-                        if str(val).strip() not in ("", "nan", "None")
-                    ),
-                    metadata={"row": i, "source": uploaded_file.name}
-                )
-                for i, row in df.iterrows()
-            ]
+            docs = [Document(page_content=" | ".join(f"{c}: {v}" for c, v in row.items() if str(v).strip() not in ("", "nan", "None")), metadata={"row": i, "source": uploaded_file.name}) for i, row in df.iterrows()]
             docs = [d for d in docs if d.page_content.strip()]
         else:
             raise ValueError(f"Unsupported file type: .{ext}")
@@ -326,94 +449,105 @@ def load_file(uploaded_file) -> list:
     finally:
         os.unlink(tmp_path)
 
-# ── Fetch location + weather once per session ─────────────────────────
+# ── Fetch location + weather once ────────────────────────────────────
 if st.session_state.location is None:
-    with st.spinner("Detecting your location..."):
-        st.session_state.location = get_location()
-
-if st.session_state.weather is None and st.session_state.location:
+    st.session_state.location = get_location()
+if st.session_state.weather is None:
     loc = st.session_state.location
     st.session_state.weather = get_weather(loc["lat"], loc["lon"])
 
 city = st.session_state.location.get("city", "your city")
-weather = st.session_state.weather or {"temp": 28, "desc": "pleasant", "humidity": 60, "code": 0}
+weather = st.session_state.weather or {"temp": 28, "desc": "pleasant", "icon": "🌤️", "humidity": 60, "wind": 10}
 
-# Show location in sidebar
-st.sidebar.header("📄 Upload Documents")
-st.sidebar.caption("PDF, DOCX, TXT, XLSX, XLS, CSV · Multiple files allowed")
-if st.session_state.location:
+# ── Sidebar ───────────────────────────────────────────────────────────
+with st.sidebar:
+    # Weather card
     loc = st.session_state.location
     w = st.session_state.weather
-    st.sidebar.info(
-        f"📍 {loc['city']}, {loc['region']}\n\n"
-        f"🌡️ {w['temp']}°C · {w['desc'].title()}\n\n"
-        f"💧 Humidity: {w['humidity']}%"
+    st.markdown(f"""
+    <div class="weather-card">
+        <div class="weather-city">📍 {loc['city']}, {loc['region']}</div>
+        <div class="weather-temp">{w['icon']} {w['temp']}°C</div>
+        <div class="weather-desc">{w['desc'].title()}</div>
+        <div class="weather-row">
+            <span>💧 {w['humidity']}%</span>
+            <span>💨 {w['wind']} km/h</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("#### 📄 Upload Documents")
+    st.caption("PDF · DOCX · TXT · XLSX · CSV")
+
+    uploaded_files = st.file_uploader(
+        "Choose files",
+        type=["pdf", "docx", "txt", "xlsx", "xls", "csv"],
+        accept_multiple_files=True,
+        label_visibility="collapsed"
     )
 
-# ── File uploader ─────────────────────────────────────────────────────
-uploaded_files = st.sidebar.file_uploader(
-    "Choose files",
-    type=["pdf", "docx", "txt", "xlsx", "xls", "csv"],
-    accept_multiple_files=True
-)
-
-if uploaded_files:
-    new_files = [f for f in uploaded_files if f.name not in st.session_state.indexed_files]
-    if new_files:
-        if st.sidebar.button(f"📥 Index {len(new_files)} new file(s)"):
-            all_chunks = []
-            failed = []
-            progress = st.sidebar.progress(0, text="Starting...")
-            for i, file in enumerate(new_files):
-                try:
-                    progress.progress(int((i / len(new_files)) * 100), text=f"Loading {file.name}...")
-                    docs = load_file(file)
-                    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-                    chunks = splitter.split_documents(docs)
-                    all_chunks.extend(chunks)
-                    st.session_state.indexed_files.append(file.name)
-                except Exception as e:
-                    failed.append(f"{file.name}: {str(e)}")
-            if all_chunks:
-                progress.progress(90, text="Building vector index...")
-                embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-                if st.session_state.vectorstore is None:
-                    st.session_state.vectorstore = FAISS.from_documents(all_chunks, embeddings)
-                else:
-                    new_vs = FAISS.from_documents(all_chunks, embeddings)
-                    st.session_state.vectorstore.merge_from(new_vs)
-                if st.session_state.model is None:
-                    st.session_state.model = get_model()
-                progress.progress(100, text="Done!")
-                st.sidebar.success(f"✅ Indexed {len(new_files)} file(s)")
-            if failed:
+    if uploaded_files:
+        new_files = [f for f in uploaded_files if f.name not in st.session_state.indexed_files]
+        if new_files:
+            if st.button(f"📥 Index {len(new_files)} file(s)", use_container_width=True):
+                all_chunks = []
+                failed = []
+                progress = st.progress(0, text="Starting...")
+                for i, file in enumerate(new_files):
+                    try:
+                        progress.progress(int((i / len(new_files)) * 100), text=f"Loading {file.name}...")
+                        docs = load_file(file)
+                        splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+                        chunks = splitter.split_documents(docs)
+                        all_chunks.extend(chunks)
+                        st.session_state.indexed_files.append(file.name)
+                    except Exception as e:
+                        failed.append(f"{file.name}: {str(e)}")
+                if all_chunks:
+                    progress.progress(90, text="Building vector index...")
+                    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+                    if st.session_state.vectorstore is None:
+                        st.session_state.vectorstore = FAISS.from_documents(all_chunks, embeddings)
+                    else:
+                        new_vs = FAISS.from_documents(all_chunks, embeddings)
+                        st.session_state.vectorstore.merge_from(new_vs)
+                    if st.session_state.model is None:
+                        st.session_state.model = get_model()
+                    progress.progress(100, text="Done!")
+                    st.success(f"✅ Indexed {len(new_files)} file(s)")
                 for f in failed:
-                    st.sidebar.error(f"❌ {f}")
-    else:
-        st.sidebar.success("✅ All uploaded files already indexed")
+                    st.error(f"❌ {f}")
+        else:
+            st.success("✅ All files indexed")
 
-if st.session_state.indexed_files:
-    st.sidebar.divider()
-    st.sidebar.markdown("**Indexed documents:**")
-    for fname in st.session_state.indexed_files:
-        st.sidebar.caption(f"📄 {fname}")
-    if st.sidebar.button("🗑️ Clear all documents"):
-        st.session_state.vectorstore = None
-        st.session_state.indexed_files = []
+    if st.session_state.indexed_files:
+        st.divider()
+        st.markdown("**Indexed documents**")
+        for fname in st.session_state.indexed_files:
+            st.markdown(f'<span class="file-pill">📄 {fname}</span>', unsafe_allow_html=True)
+        if st.button("🗑️ Clear all documents", use_container_width=True):
+            st.session_state.vectorstore = None
+            st.session_state.indexed_files = []
+            st.session_state.chat_history = []
+            st.session_state.model = None
+            st.rerun()
+
+    if st.button("🗑️ Clear Chat", use_container_width=True):
         st.session_state.chat_history = []
-        st.session_state.model = None
         st.rerun()
 
-if st.sidebar.button("🗑️ Clear Chat"):
-    st.session_state.chat_history = []
-    st.rerun()
-
-st.sidebar.divider()
-st.sidebar.caption("IBM watsonx.ai · granite-3-8b-instruct · eu-de")
+    st.divider()
+    st.caption("IBM watsonx.ai · granite-3-8b-instruct · eu-de")
 
 # ── Chat UI ───────────────────────────────────────────────────────────
 if not st.session_state.vectorstore:
-    st.info("👈 Upload one or more documents and click **Index** to get started.")
+    st.markdown("""
+    <div style="text-align:center;padding:80px 20px;color:#1e2d45;">
+        <div style="font-size:48px;margin-bottom:16px;">📋</div>
+        <div style="font-size:16px;font-weight:500;color:#374151;margin-bottom:8px;">No documents indexed yet</div>
+        <div style="font-size:13px;color:#1e2d45;">Upload your HR policy documents from the sidebar to get started</div>
+    </div>
+    """, unsafe_allow_html=True)
 else:
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
@@ -425,14 +559,10 @@ else:
             st.markdown(question)
 
         with st.chat_message("assistant"):
-
-            # ── Small talk / greeting handler ──────────────────────────
             if is_small_talk(question):
                 answer = get_small_talk_reply(question, city, weather)
                 st.markdown(answer)
                 st.session_state.chat_history.append({"role": "assistant", "content": answer})
-
-            # ── HR policy RAG handler ──────────────────────────────────
             else:
                 with st.spinner("Asking Watson AI..."):
                     try:
