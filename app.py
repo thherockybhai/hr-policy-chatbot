@@ -241,22 +241,29 @@ def get_model():
         project_id=os.environ.get("WATSONX_PROJECT_ID"),
     )
 
-# ── Location + Weather ────────────────────────────────────────────────
-def get_location():
+# ── Location: resolve city name → lat/lon via Open-Meteo geocoding ───
+def resolve_city(city_name: str) -> dict:
+    """Convert a city name to lat/lon using Open-Meteo geocoding (free, no key)."""
     try:
-        r = requests.get("http://ip-api.com/json/", timeout=5)
-        data = r.json()
-        if data.get("status") == "success":
+        r = requests.get(
+            "https://geocoding-api.open-meteo.com/v1/search",
+            params={"name": city_name, "count": 1, "language": "en", "format": "json"},
+            timeout=5
+        )
+        results = r.json().get("results", [])
+        if results:
+            res = results[0]
             return {
-                "city": data.get("city", "your city"),
-                "region": data.get("regionName", ""),
-                "country": data.get("country", ""),
-                "lat": data.get("lat"),
-                "lon": data.get("lon"),
+                "city": res.get("name", city_name),
+                "region": res.get("admin1", ""),
+                "country": res.get("country", ""),
+                "lat": res.get("latitude", 12.97),
+                "lon": res.get("longitude", 77.59),
             }
     except Exception:
         pass
-    return {"city": "your city", "region": "", "country": "", "lat": 12.97, "lon": 77.59}
+    # Default to Bengaluru if lookup fails
+    return {"city": city_name, "region": "", "country": "", "lat": 12.97, "lon": 77.59}
 
 def get_weather(lat, lon):
     try:
@@ -449,21 +456,32 @@ def load_file(uploaded_file):
     finally:
         os.unlink(tmp_path)
 
-# ── Fetch location + weather once ────────────────────────────────────
-if st.session_state.location is None:
-    st.session_state.location = get_location()
-if st.session_state.weather is None:
-    loc = st.session_state.location
-    st.session_state.weather = get_weather(loc["lat"], loc["lon"])
-
-city = st.session_state.location.get("city", "your city")
-weather = st.session_state.weather or {"temp": 28, "desc": "pleasant", "icon": "🌤️", "humidity": 60, "wind": 10}
+# ── Location resolves from user input, defaults to Bengaluru ─────────
+if "city_input" not in st.session_state:
+    st.session_state.city_input = "Bengaluru"
 
 # ── Sidebar ───────────────────────────────────────────────────────────
 with st.sidebar:
+    # ── City input ────────────────────────────────────────────────────
+    st.markdown("#### 📍 Your Location")
+    city_input = st.text_input(
+        "Enter your city",
+        value=st.session_state.city_input,
+        placeholder="e.g. Bengaluru",
+        label_visibility="collapsed"
+    )
+
+    if city_input != st.session_state.city_input or st.session_state.location is None:
+        st.session_state.city_input = city_input
+        with st.spinner("Fetching weather..."):
+            st.session_state.location = resolve_city(city_input)
+            loc = st.session_state.location
+            st.session_state.weather = get_weather(loc["lat"], loc["lon"])
+
+    loc = st.session_state.location or {"city": "Bengaluru", "region": "Karnataka", "country": "India", "lat": 12.97, "lon": 77.59}
+    w = st.session_state.weather or {"temp": 28, "desc": "pleasant", "icon": "🌤️", "humidity": 60, "wind": 10}
+
     # Weather card
-    loc = st.session_state.location
-    w = st.session_state.weather
     st.markdown(f"""
     <div class="weather-card">
         <div class="weather-city">📍 {loc['city']}, {loc['region']}</div>
@@ -475,6 +493,9 @@ with st.sidebar:
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+    city = loc["city"]
+    weather = w
 
     st.markdown("#### 📄 Upload Documents")
     st.caption("PDF · DOCX · TXT · XLSX · CSV")
